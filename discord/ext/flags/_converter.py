@@ -60,6 +60,7 @@ async def _actual_conversion(ctx, converter, argument):
         except AttributeError:
             name = converter.__class__.__name__
 
+        ctx.bot.logger.warn(f'Converting to {name} failed.', exc_info=exc)
         raise commands.BadArgument('Converting to "{}" failed.'.format(name)) from exc
 
 
@@ -71,6 +72,11 @@ class FlagParser(commands.Converter):
     async def convert(self, ctx, argument):
         """Returns a Dict[FlagName, FlagValue]"""
         _ret = dict()
+        flags = self.flags.copy()
+        for flag, conv in flags.copy().items():
+            if isinstance(conv, list):
+                _ret[flag] = []
+                flags[flag] = flags[flag][0]
         for fg1, fv1, fg2, fv2 in FLAG_RE.findall(argument):
             flagname = fg1 or fg2
             flagvalue = fv1 or fv2
@@ -79,12 +85,16 @@ class FlagParser(commands.Converter):
             if not flagvalue:
                 flagvalue = "true"
             try:
-                conv = self.flags[flagname]
+                conv = flags[flagname]
             except KeyError:
                 raise FlagParsingError("Unknown flag \"{}\".".format(flagname))
             flagvalue = await _actual_conversion(ctx, conv, flagvalue.strip())
-            _ret[flagname] = flagvalue
-        for flag in self.flags:
+            if flagname in _ret and isinstance(_ret[flagname], list):
+                _ret[flagname].append(flagvalue)
+            else:
+                _ret[flagname] = flagvalue
+        for flag in flags:
             if flag not in _ret:
                 _ret[flag] = None
+        del flags
         return _ret
